@@ -2,9 +2,8 @@ package base64Captcha
 
 import (
 	"bytes"
+	"errors"
 	"fmt"
-	"github.com/golang/freetype"
-	"golang.org/x/image/font"
 	"image"
 	"image/color"
 	"image/draw"
@@ -13,6 +12,10 @@ import (
 	"log"
 	"math"
 	"math/rand"
+	"strconv"
+
+	"github.com/golang/freetype"
+	"golang.org/x/image/font"
 )
 
 var trueTypeFontFamilys = readFontsToSliceOfTrueTypeFonts()
@@ -54,7 +57,20 @@ type ConfigCharacter struct {
 	// CaptchaLen Default number of digits in captcha solution.
 	// 默认数字验证长度6.
 	CaptchaLen int
+	// BgColorMode controls the background for generated image
+	BgColorMode string
+	// BgColor is the background color for generated image
+	// only available when BgColorMode=custom
+	// Example: ffffff -> white background
+	BgColor string
 }
+
+const (
+	BgColorModeLight  = "light"
+	BgColorModeDeep   = "deep"
+	BgColorModeCustom = "custom"
+)
+
 type point struct {
 	X int
 	Y int
@@ -336,10 +352,49 @@ func (captcha *CaptchaImageChar) drawText(text string, isSimpleFont bool) error 
 
 }
 
+func hexToRGBA(colorHex string) (color.RGBA, error) {
+	if len(colorHex) != 6 {
+		return color.RGBA{}, errors.New("invalid color hex")
+	}
+	r, err := strconv.ParseInt(colorHex[:2], 16, 10)
+	if err != nil {
+		return color.RGBA{}, err
+	}
+
+	g, err := strconv.ParseInt(colorHex[2:4], 16, 18)
+	if err != nil {
+		return color.RGBA{}, err
+	}
+
+	b, err := strconv.ParseInt(colorHex[4:], 16, 10)
+	if err != nil {
+		return color.RGBA{}, err
+	}
+
+	return color.RGBA{
+		R: uint8(r),
+		G: uint8(g),
+		B: uint8(b),
+		A: 1,
+	}, nil
+}
+
 //EngineCharCreate create captcha with config struct.
 func EngineCharCreate(config ConfigCharacter) *CaptchaImageChar {
+	var bgColor color.RGBA
+	if config.BgColorMode == BgColorModeDeep {
+		bgColor = randDeepColor()
+	} else if config.BgColorMode == BgColorModeLight {
+		bgColor = randLightColor()
+	} else {
+		var err error
+		bgColor, err = hexToRGBA(config.BgColor)
+		if err != nil {
+			bgColor = randLightColor()
+		}
+	}
 
-	captchaImage, err := newCaptchaImage(config.Width, config.Height, randLightColor())
+	captchaImage, err := newCaptchaImage(config.Width, config.Height, bgColor)
 
 	//背景有像素点干扰
 	if config.IsShowNoiseDot {
